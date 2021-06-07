@@ -78,6 +78,11 @@ func getGraph(target string) (graph, error) {
 	return parsedJSON.Servers, nil
 }
 
+// func graphFromList(list []string) graph {
+// 	//<serverfrom> <serverto> :<hops-from-server-you-are-on> <serverfrom-description>
+// 	servers = []*Server{}
+// }
+
 func stringSliceContains(s string, slice []string) bool {
 	for _, v := range slice {
 		if s == v {
@@ -152,4 +157,23 @@ func (g graph) largestDistance() (int, [2]*Server) {
 	}
 
 	return bestHopCount, bestHopPair
+}
+
+func (g graph) largestDistanceFrom(sourceID string) (int, *Server) {
+	bestHopCount := -1
+	var bestServer *Server
+	servers := g.keys()
+
+	for _, other := range servers {
+		if other == sourceID {
+			continue
+		}
+
+		if dst := g.distanceToPeer(sourceID, other); dst > bestHopCount {
+			bestHopCount = dst
+			bestServer = g[other]
+		}
+	}
+
+	return bestHopCount, bestServer
 }
