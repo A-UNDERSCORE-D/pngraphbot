@@ -31,8 +31,8 @@ func NewBot(nick, user string) *bot {
 	b := &bot{irccon, make(map[string]string), make(map[string][]string)}
 	defaultSources := []string{"A_Dragon", "#opers"}
 
-	b.addChatCommand("biggesthop", "Find largest number of hops between two servers", defaultSources, -1, b.maxHops)
-	b.addChatCommand("biggesthopfrom", "Find the furthest server from the given server", defaultSources, 1, b.maxHopsFrom)
+	b.addChatCommand("biggesthop", "Find largest number of hops between two servers", defaultSources, -1, b.maxHops, "bh", "howfucked")
+	b.addChatCommand("biggesthopfrom", "Find the furthest server from the given server", defaultSources, 1, b.maxHopsFrom, "bhf", "howfuckedis")
 	b.addChatCommand("singlepointoffailure", "Find the server with the most peers", defaultSources, -1, b.singlePointOfFailure, "spof")
 	b.addChatCommand("peercount", "Get the number of peers for the given server", defaultSources, 1, b.peerCount, "pc", "peecount")
 	b.addChatCommand("hopsbetween", "get the number of hops between two servers", defaultSources, 2, b.hopsBetween, "hb")
