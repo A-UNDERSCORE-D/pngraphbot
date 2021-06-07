@@ -50,10 +50,10 @@ func NewBot(nick, user string) *bot {
 	))
 
 	irccon.AddCallback("PRIVMSG", b.commandWrapper(
-		"hopsbetween", "get the number of hops between two servers", defaultSources, 2, b.peerCount,
+		"hopsbetween", "get the number of hops between two servers", defaultSources, 2, b.hopsBetween,
 	))
 	irccon.AddCallback("PRIVMSG", b.commandWrapper(
-		"hb", "get the number of hops between two servers", defaultSources, 2, b.peerCount,
+		"hb", "get the number of hops between two servers", defaultSources, 2, b.hopsBetween,
 	))
 
 	irccon.AddCallback("PRIVMSG", b.commandWrapper("help", "Take a guess.", nil, -1, b.doHelp))
