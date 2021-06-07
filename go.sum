@@ -1,0 +1,5 @@
+github.com/thoj/go-ircevent v0.0.0-20210419090348-35410aa86c49 h1:yi0zALyFXLtL91w/IvB2U/ZsnesbncMvD+0jDE9vQLw=
+github.com/thoj/go-ircevent v0.0.0-20210419090348-35410aa86c49/go.mod h1:I0ZT9x8wStY6VOxtNOrLpnDURFs7HS0z1e1vhuKUEVc=
+golang.org/x/text v0.3.2 h1:tW2bmiBqwgJj/UpqtC8EpXEZVYOwU0yG4iWbprSVAcs=
+golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
