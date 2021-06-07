@@ -193,4 +193,17 @@ func (g graph) getServer(nameOrID string) *Server {
 	return nil
 }
 
+func (g graph) mostPeers() *Server {
+	best := -1
+	var bestServer *Server
+	for _, srv := range g {
+		if len(srv.Peers) > best {
+			best = len(srv.Peers)
+			bestServer = srv
+		}
+	}
+
+	return bestServer
+}
+
 // Parsing LINKS and MAP will work to get all the required data.
