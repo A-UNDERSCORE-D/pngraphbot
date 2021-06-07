@@ -33,7 +33,7 @@ func NewBot(nick, user string) *bot {
 	))
 
 	b.ircCon.AddCallback("PRIVMSG", b.commandWrapper(
-		"largesthopfrom", defaultSources, 1, b.maxHopsFrom,
+		"biggesthopfrom", defaultSources, 1, b.maxHopsFrom,
 	))
 
 	return b
@@ -108,15 +108,14 @@ func (b *bot) maxHopsFrom(e *irc.Event, args []string) {
 			b.replyTof(e, "Error: %s", err)
 			return
 		}
-		if _, exists := gr[args[0]]; !exists {
+
+		from := gr.getServer(args[0])
+		if from == nil {
 			b.replyTof(e, "Server ID %q doesnt exist!", args[0])
 			return
 		}
 
-		biggestHop, srv := gr.largestDistanceFrom(args[0])
-		b.replyTof(e, "Largest hop size is %d! other side is %s", biggestHop, srv.NameID())
+		biggestHop, srv := gr.largestDistanceFrom(from.ID)
+		b.replyTof(e, "Largest hop size from %s is %d! other side is %s", from.NameID(), biggestHop, srv.NameID())
 	}()
 }
-
-// func (b *bot) getList() <-chan graph {
-// }

@@ -177,3 +177,20 @@ func (g graph) largestDistanceFrom(sourceID string) (int, *Server) {
 
 	return bestHopCount, bestServer
 }
+
+func (g graph) getServer(nameOrID string) *Server {
+	res, exists := g[nameOrID]
+	if exists {
+		return res
+	}
+
+	for _, s := range g {
+		if s.Name == nameOrID {
+			return s
+		}
+	}
+
+	return nil
+}
+
+// Parsing LINKS and MAP will work to get all the required data.
