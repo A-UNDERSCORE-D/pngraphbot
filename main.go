@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	host = "https://ioserv.hellomouse.net/graph/json"
-	ircd = "irc.awesome-dragon.science:6697"
+	host   = "https://ioserv.hellomouse.net/graph/json"
+	ircd   = "irc.awesome-dragon.science:6697"
+	prefix = "~"
 )
 
 func main() {
@@ -18,45 +19,24 @@ func main() {
 }
 
 type bot struct {
-	ircCon   *irc.Connection
-	commands map[string]string
+	ircCon         *irc.Connection
+	commands       map[string]string
+	commandAliases map[string][]string
 }
 
 func NewBot(nick, user string) *bot {
 	irccon := irc.IRC(nick, user)
 	irccon.Debug = true
 	irccon.UseTLS = true
-	b := &bot{irccon, make(map[string]string)}
+	b := &bot{irccon, make(map[string]string), make(map[string][]string)}
 	defaultSources := []string{"A_Dragon", "#opers"}
 
-	irccon.AddCallback("PRIVMSG", b.commandWrapper(
-		"biggesthop", "Find largest number of hops between two servers", defaultSources, -1, b.maxHops,
-	))
-
-	b.ircCon.AddCallback("PRIVMSG", b.commandWrapper(
-		"biggesthopfrom", "Find the furthest server from the given server", defaultSources, 1, b.maxHopsFrom,
-	))
-
-	irccon.AddCallback("PRIVMSG", b.commandWrapper(
-		"spof", "Find the server with the most peers", defaultSources, -1, b.singlePointOfFailure,
-	))
-
-	irccon.AddCallback("PRIVMSG", b.commandWrapper(
-		"singlepointoffailure", "Find the server with the most peers", defaultSources, -1, b.singlePointOfFailure,
-	))
-
-	irccon.AddCallback("PRIVMSG", b.commandWrapper(
-		"peercount", "Get the number of peers for the given server", defaultSources, 1, b.peerCount,
-	))
-
-	irccon.AddCallback("PRIVMSG", b.commandWrapper(
-		"hopsbetween", "get the number of hops between two servers", defaultSources, 2, b.hopsBetween,
-	))
-	irccon.AddCallback("PRIVMSG", b.commandWrapper(
-		"hb", "get the number of hops between two servers", defaultSources, 2, b.hopsBetween,
-	))
-
-	irccon.AddCallback("PRIVMSG", b.commandWrapper("help", "Take a guess.", nil, -1, b.doHelp))
+	b.addChatCommand("biggesthop", "Find largest number of hops between two servers", defaultSources, -1, b.maxHops)
+	b.addChatCommand("biggesthopfrom", "Find the furthest server from the given server", defaultSources, 1, b.maxHopsFrom)
+	b.addChatCommand("singlepointoffailure", "Find the server with the most peers", defaultSources, -1, b.singlePointOfFailure, "spof")
+	b.addChatCommand("peercount", "Get the number of peers for the given server", defaultSources, 1, b.peerCount, "pc", "peecount")
+	b.addChatCommand("hopsbetween", "get the number of hops between two servers", defaultSources, 2, b.hopsBetween, "hb")
+	b.addChatCommand("help", "Take a guess.", nil, -1, b.doHelp)
 
 	return b
 }
@@ -66,15 +46,44 @@ func (b *bot) run(server string) {
 	b.ircCon.Loop()
 }
 
-func (b *bot) commandWrapper(command, desc string, allowedSources []string, numArgs int, callback func(e *irc.Event, args []string)) func(e *irc.Event) {
-	cmd := "~" + command
-	b.commands[cmd] = desc
+func (b *bot) addChatCommand(command, desc string, allowedSources []string, numArgs int, callback func(e *irc.Event, args []string), aliases ...string) {
 	b.commands[command] = desc
+	b.commandAliases[command] = append(b.commandAliases[command], aliases...)
+	b.ircCon.AddCallback("PRIVMSG", b.commandWrapper(command, allowedSources, numArgs, callback))
+}
+
+func (b *bot) matchesCommandOrAlias(s string) (string, bool) {
+	s = strings.TrimPrefix(s, prefix)
+
+	for c := range b.commands {
+		if c == s {
+			return s, true
+		}
+
+		for _, alias := range b.commandAliases[c] {
+			if alias == s {
+				return c, true
+			}
+		}
+	}
+	return "", false
+}
+
+func (b *bot) commandWrapper(command string, allowedSources []string, numArgs int, callback func(e *irc.Event, args []string)) func(e *irc.Event) {
+	cmd := "~" + command
 	return func(e *irc.Event) {
 		message := strings.TrimSpace(e.MessageWithoutFormat())
 		splitMsg := strings.Split(message, " ")
+		if !strings.HasPrefix(splitMsg[0], prefix) {
+			return
+		}
 
-		if len(splitMsg) == 0 || splitMsg[0] != cmd {
+		realCommand, exists := b.matchesCommandOrAlias(splitMsg[0])
+		if !exists {
+			return
+		}
+
+		if len(splitMsg) == 0 || realCommand != command {
 			return
 		}
 
@@ -179,20 +188,31 @@ func (b *bot) doHelp(e *irc.Event, args []string) {
 	if len(args) == 0 {
 		keys := []string{}
 		for k := range b.commands {
-			keys = append(keys, k)
+			aliases := ""
+			if a := b.commandAliases[k]; len(a) > 0 {
+				aliases = fmt.Sprintf(" (%s)", strings.Join(a, ", "))
+			}
+			keys = append(keys, fmt.Sprint(k, aliases))
+
 		}
 		b.replyTof(e, "available commands: %s", strings.Join(keys, ", "))
 		return
 	}
 
 	asked := args[0]
-	desc, exists := b.commands[asked]
+	realCmd, exists := b.matchesCommandOrAlias(asked)
 	if !exists {
 		b.replyTof(e, "unknown command: %q", asked)
 		return
 	}
 
-	b.replyTof(e, "help for %q: %s", asked, desc)
+	desc := b.commands[realCmd]
+	aliases := ""
+	if len(b.commandAliases[realCmd]) > 0 {
+		aliases = fmt.Sprintf(" -- Aliases: %s", strings.Join(b.commandAliases[realCmd], ", "))
+	}
+
+	b.replyTof(e, "help for %q: %s%s", realCmd, desc, aliases)
 }
 
 func (b *bot) hopsBetween(e *irc.Event, args []string) {
