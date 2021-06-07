@@ -49,6 +49,13 @@ func NewBot(nick, user string) *bot {
 		"peercount", "Get the number of peers for the given server", defaultSources, 1, b.peerCount,
 	))
 
+	irccon.AddCallback("PRIVMSG", b.commandWrapper(
+		"hopsbetween", "get the number of hops between two servers", defaultSources, 2, b.peerCount,
+	))
+	irccon.AddCallback("PRIVMSG", b.commandWrapper(
+		"hb", "get the number of hops between two servers", defaultSources, 2, b.peerCount,
+	))
+
 	irccon.AddCallback("PRIVMSG", b.commandWrapper("help", "Take a guess.", nil, -1, b.doHelp))
 
 	return b
@@ -62,6 +69,7 @@ func (b *bot) run(server string) {
 func (b *bot) commandWrapper(command, desc string, allowedSources []string, numArgs int, callback func(e *irc.Event, args []string)) func(e *irc.Event) {
 	cmd := "~" + command
 	b.commands[cmd] = desc
+	b.commands[command] = desc
 	return func(e *irc.Event) {
 		message := e.MessageWithoutFormat()
 		splitMsg := strings.Split(message, " ")
@@ -185,4 +193,31 @@ func (b *bot) doHelp(e *irc.Event, args []string) {
 	}
 
 	b.replyTof(e, "help for %q: %s", asked, desc)
+}
+
+func (b *bot) hopsBetween(e *irc.Event, args []string) {
+	go func() {
+		gr, err := getGraph(host)
+		if err != nil {
+			b.replyTof(e, "Error: %s", err)
+			return
+		}
+
+		one := gr.getServer(args[0])
+		two := gr.getServer(args[1])
+
+		if one == nil {
+			b.replyTof(e, "Server ID / name %q doesn't exist!", args[2])
+			return
+		}
+
+		if two == nil {
+			b.replyTof(e, "Server ID / name %q doesn't exist!", args[1])
+			return
+		}
+
+		dst := gr.distanceToPeer(one.ID, two.ID)
+
+		b.replyTof(e, "there are %d hops between %s and %s", dst, one.NameID(), two.NameID())
+	}()
 }
