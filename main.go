@@ -71,7 +71,7 @@ func (b *bot) commandWrapper(command, desc string, allowedSources []string, numA
 	b.commands[cmd] = desc
 	b.commands[command] = desc
 	return func(e *irc.Event) {
-		message := e.MessageWithoutFormat()
+		message := strings.TrimSpace(e.MessageWithoutFormat())
 		splitMsg := strings.Split(message, " ")
 
 		if len(splitMsg) == 0 || splitMsg[0] != cmd {
