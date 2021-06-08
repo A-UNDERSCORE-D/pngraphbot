@@ -97,6 +97,13 @@ func (g graph) distanceToPeer(startID, endID string) int {
 		return 0
 	}
 
+	start := g.getServer(startID)
+	end := g.getServer(endID)
+
+	if start == nil || end == nil {
+		return -1
+	}
+
 	current := g[startID]
 	toCheck := []*Server{}
 	visited := []string{} // Unlikely but just in case

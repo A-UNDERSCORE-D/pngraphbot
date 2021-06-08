@@ -37,6 +37,15 @@ func NewBot(nick, user string) *bot {
 	b.addChatCommand("peercount", "Get the number of peers for the given server", defaultSources, 1, b.peerCount, "pc", "peecount")
 	b.addChatCommand("hopsbetween", "get the number of hops between two servers", defaultSources, 2, b.hopsBetween, "hb")
 	b.addChatCommand("help", "Take a guess.", nil, -1, b.doHelp)
+	b.addChatCommand("count", "Current server count", defaultSources, 0, func(e *irc.Event, args []string) {
+		go func() {
+			g, err := getGraph(host)
+			if err != nil {
+				b.replyTof(e, "Error: %s", err)
+			}
+			b.replyTof(e, "Currently there are %d servers on the network", len(g))
+		}()
+	})
 
 	return b
 }
