@@ -32,13 +32,13 @@ func NewBot(nick, user string) *bot {
 	b := &bot{irccon, make(map[string]string), make(map[string][]string)}
 	defaultSources := []string{"A_Dragon", "#opers"}
 
-	b.addChatCommand("biggesthop", "Find largest number of hops between two servers", defaultSources, -1, b.maxHops, "bh", "howfucked")
+	b.addChatCommand("biggesthop", "Find largest number of hops between two servers, now fasterer", defaultSources, -1, b.maxHops, "bh", "howfucked")
 	b.addChatCommand("biggesthopfrom", "Find the furthest server from the given server", defaultSources, 1, b.maxHopsFrom, "bhf", "howfuckedis")
 	b.addChatCommand("singlepointoffailure", "Find the server with the most peers", defaultSources, -1, b.singlePointOfFailure, "spof")
 	b.addChatCommand("peercount", "Get the number of peers for the given server", defaultSources, 1, b.peerCount, "pc", "peecount")
 	b.addChatCommand("hopsbetween", "get the number of hops between two servers", defaultSources, 2, b.hopsBetween, "hb")
 	b.addChatCommand("help", "Take a guess.", nil, -1, b.doHelp)
-	b.addChatCommand("count", "Current server count", defaultSources, 0, func(e *irc.Event, args []string) {
+	b.addChatCommand("count", "Current server count", defaultSources, 0, func(e *irc.Event, _ []string) {
 		go func() {
 			g, err := getGraph(host)
 			if err != nil {
@@ -109,23 +109,6 @@ func (b *bot) commandWrapper(command string, allowedSources []string, numArgs in
 
 		callback(e, splitMsg[1:])
 	}
-}
-
-func (b *bot) maxHops(e *irc.Event, _ []string) {
-	go func() {
-		gr, err := getGraph(host)
-		if err != nil {
-			b.replyTof(e, "Error: %s", err)
-			return
-		}
-		t := time.Now()
-		biggestHop, pair := gr.largestDistance()
-		b.replyTof(
-			e,
-			"Largest hop size is %d! between %s and %s (search took %s)",
-			biggestHop, pair[0].NameID(), pair[1].NameID(), time.Since(t),
-		)
-	}()
 }
 
 func (b *bot) replyTo(e *irc.Event, message string) {
@@ -256,6 +239,35 @@ func (b *bot) hopsBetween(e *irc.Event, args []string) {
 		b.replyTof(
 			e, "there are %d hops between %s and %s (Search took %s)",
 			dst, one.NameID(), two.NameID(), time.Since(t),
+		)
+	}()
+}
+
+func (b *bot) maxHops(e *irc.Event, _ []string) {
+	go func() {
+		gr, err := getGraph(host)
+		if err != nil {
+			b.replyTof(e, "Error: %s", err)
+			return
+		}
+
+		t := time.Now()
+		var bestPair [2]*Server
+		best := -1
+		for _, start := range gr {
+			distances := gr.genericDistanceTo(start)
+			for other, d := range distances {
+				if d > best {
+					best = d
+					bestPair = [2]*Server{start, other}
+				}
+			}
+		}
+
+		b.replyTof(
+			e,
+			"Largest hop size is %d! between %s and %s (search took %s)",
+			best, bestPair[0].NameID(), bestPair[1].NameID(), time.Since(t),
 		)
 	}()
 }

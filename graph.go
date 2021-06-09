@@ -149,22 +149,35 @@ func (g graph) keys() []string {
 	return out
 }
 
-func (g graph) largestDistance() (int, [2]*Server) {
-	bestHopCount := -1
-	var bestHopPair [2]*Server
-	servers := g.keys()
-	for i, id := range servers {
-		for _, other := range servers[i:] {
-			dst := g.distanceToPeer(id, other)
-			if dst > bestHopCount {
-				bestHopCount = dst
-				bestHopPair = [2]*Server{g[id], g[other]}
+func (g graph) genericDistanceTo(source *Server) map[*Server]int {
+	toCheck := []*Server{}
+	toCheck = append(toCheck, source.Peers...)
+	count := 0
+
+	out := make(map[*Server]int)
+	out[source] = 0
+	for {
+		next := []*Server{}
+		for _, server := range toCheck {
+			out[server] = count + 1
+			for _, s := range server.Peers {
+				if _, exists := out[s]; exists {
+					continue // skip servers we've already seen
+				}
+				next = append(next, s)
 			}
 		}
+		toCheck = next
+		count++
+		if len(toCheck) == 0 {
+			break
+		}
 	}
-
-	return bestHopCount, bestHopPair
+	return out
 }
+
+// func (g graph) largestDistance2(source *Server) (int, *Server) {
+// }
 
 func (g graph) largestDistanceFrom(sourceID string) (int, *Server) {
 	bestHopCount := -1
