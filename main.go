@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -420,12 +419,8 @@ func (b *bot) maxHops2(e *irc.Event, _ []string) {
 // Parsing LINKS and MAP will work to get all the required data.
 
 func (b *bot) updateLinksAndMap() error {
-	if b.updatingLinkAndMap {
-		return errors.New("already updating")
-	}
-
-	b.mapLinksMutex.Lock()
-	defer b.mapLinksMutex.Unlock()
+	// b.mapLinksMutex.Lock()
+	// defer b.mapLinksMutex.Unlock()
 
 	linksChan := make(chan []string)
 	mapChan := make(chan string)
