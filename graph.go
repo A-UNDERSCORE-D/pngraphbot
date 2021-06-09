@@ -59,7 +59,7 @@ func getGraph(target string) (graph, error) {
 	}
 
 	if err := json.Unmarshal(jsonData, parsedJSON); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	for id, server := range parsedJSON.Servers {
