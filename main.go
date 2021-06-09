@@ -139,7 +139,7 @@ func (b *bot) maxHopsFrom(e *irc.Event, args []string) {
 			return
 		}
 		t := time.Now()
-		biggestHop, srv := gr.largestDistanceFrom(from.ID)
+		biggestHop, srv := gr.largestDistanceFrom(from)
 		b.replyTof(
 			e, "Largest hop size from %s is %d! other side is %s (search took %s)",
 			from.NameID(), biggestHop, srv.NameID(), time.Since(t),
@@ -234,7 +234,7 @@ func (b *bot) hopsBetween(e *irc.Event, args []string) {
 			return
 		}
 		t := time.Now()
-		dst := gr.distanceToPeer(one.ID, two.ID)
+		dst := gr.distanceToPeer(one, two)
 
 		b.replyTof(
 			e, "there are %d hops between %s and %s (Search took %s)",
@@ -255,7 +255,7 @@ func (b *bot) maxHops(e *irc.Event, _ []string) {
 		var bestPair [2]*Server
 		best := -1
 		for _, start := range gr {
-			distances := gr.genericDistanceTo(start)
+			distances := gr.allDistancesFrom(start)
 			for other, d := range distances {
 				if d > best {
 					best = d

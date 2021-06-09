@@ -92,51 +92,17 @@ func stringSliceContains(s string, slice []string) bool {
 	return false
 }
 
-func (g graph) distanceToPeer(startID, endID string) int {
-	if startID == endID {
+func (g graph) distanceToPeer(start, end *Server) int {
+	if start == end {
 		return 0
 	}
+	distances := g.allDistancesFrom(start)
 
-	start := g.getServer(startID)
-	end := g.getServer(endID)
-
-	if start == nil || end == nil {
+	if res, exists := distances[end]; exists {
+		return res
+	} else {
 		return -1
 	}
-
-	current := g[startID]
-	toCheck := []*Server{}
-	visited := []string{} // Unlikely but just in case
-	toCheck = append(toCheck, current.Peers...)
-	depth := 1
-	for {
-		if len(toCheck) == 0 {
-			break
-		}
-
-		next := []*Server{}
-		for _, c := range toCheck {
-			if c.ID == endID {
-				return depth
-			}
-
-			visited = append(visited, c.ID)
-			next = append(next, c.Peers...)
-		}
-
-		// we didn't find it that round
-		toCheck = toCheck[:0]
-		for _, v := range next {
-			if stringSliceContains(v.ID, visited) {
-				continue
-			}
-
-			toCheck = append(toCheck, v)
-		}
-		depth++
-	}
-
-	return -1
 }
 
 func (g graph) keys() []string {
@@ -149,7 +115,16 @@ func (g graph) keys() []string {
 	return out
 }
 
-func (g graph) genericDistanceTo(source *Server) map[*Server]int {
+func (g graph) values() (out []*Server) {
+	keys := g.keys()
+	for _, k := range keys {
+		out = append(out, g[k])
+	}
+
+	return out
+}
+
+func (g graph) allDistancesFrom(source *Server) map[*Server]int {
 	toCheck := []*Server{}
 	toCheck = append(toCheck, source.Peers...)
 	count := 0
@@ -179,19 +154,16 @@ func (g graph) genericDistanceTo(source *Server) map[*Server]int {
 // func (g graph) largestDistance2(source *Server) (int, *Server) {
 // }
 
-func (g graph) largestDistanceFrom(sourceID string) (int, *Server) {
+func (g graph) largestDistanceFrom(source *Server) (int, *Server) {
 	bestHopCount := -1
 	var bestServer *Server
-	servers := g.keys()
+	servers := g.values()
+	distances := g.allDistancesFrom(source)
 
 	for _, other := range servers {
-		if other == sourceID {
-			continue
-		}
-
-		if dst := g.distanceToPeer(sourceID, other); dst > bestHopCount {
-			bestHopCount = dst
-			bestServer = g[other]
+		if hc := distances[other]; hc > bestHopCount {
+			bestHopCount = hc
+			bestServer = other
 		}
 	}
 
