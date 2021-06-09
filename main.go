@@ -225,7 +225,7 @@ func (b *bot) hopsBetween(e *irc.Event, args []string) {
 		two := gr.getServer(args[1])
 
 		if one == nil {
-			b.replyTof(e, "Server ID / name %q doesn't exist!", args[2])
+			b.replyTof(e, "Server ID / name %q doesn't exist!", args[0])
 			return
 		}
 
