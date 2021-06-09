@@ -355,7 +355,9 @@ func (b *bot) hopsBetween(e *irc.Event, args []string) {
 
 func (b *bot) maxHops(e *irc.Event, _ []string) {
 	go func() {
-		gr, err := getGraph(host)
+		b.updateLinksAndMap()
+		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+		// gr, err := getGraph(host)
 		if err != nil {
 			b.replyTof(e, "Error: %s", err)
 			return
