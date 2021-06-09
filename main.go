@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	irc "github.com/thoj/go-ircevent"
 )
@@ -111,21 +112,19 @@ func (b *bot) commandWrapper(command string, allowedSources []string, numArgs in
 }
 
 func (b *bot) maxHops(e *irc.Event, _ []string) {
-	target := e.Arguments[0]
-	if target == b.ircCon.GetNick() {
-		// was a PM
-		target = e.Nick
-	}
-
 	go func() {
 		gr, err := getGraph(host)
 		if err != nil {
-			b.ircCon.Privmsgf(target, "Error: %s", err)
+			b.replyTof(e, "Error: %s", err)
 			return
 		}
-
+		t := time.Now()
 		biggestHop, pair := gr.largestDistance()
-		b.ircCon.Privmsgf(target, "Largest hop size is %d! between %s and %s", biggestHop, pair[0].NameID(), pair[1].NameID())
+		b.replyTof(
+			e,
+			"Largest hop size is %d! between %s and %s (search took %s)",
+			biggestHop, pair[0].NameID(), pair[1].NameID(), time.Since(t),
+		)
 	}()
 }
 
@@ -156,9 +155,12 @@ func (b *bot) maxHopsFrom(e *irc.Event, args []string) {
 			b.replyTof(e, "Server ID %q doesnt exist!", args[0])
 			return
 		}
-
+		t := time.Now()
 		biggestHop, srv := gr.largestDistanceFrom(from.ID)
-		b.replyTof(e, "Largest hop size from %s is %d! other side is %s", from.NameID(), biggestHop, srv.NameID())
+		b.replyTof(
+			e, "Largest hop size from %s is %d! other side is %s (search took %s)",
+			from.NameID(), biggestHop, srv.NameID(), time.Since(t),
+		)
 	}()
 }
 
@@ -170,8 +172,12 @@ func (b *bot) singlePointOfFailure(e *irc.Event, _ []string) {
 			return
 		}
 
+		t := time.Now()
 		mostPeers := gr.mostPeers()
-		b.replyTof(e, "Server with the most peers is %s with %d peers!", mostPeers.NameID(), len(mostPeers.Peers))
+		b.replyTof(
+			e, "Server with the most peers is %s with %d peers! (Search took %s)",
+			mostPeers.NameID(), len(mostPeers.Peers), time.Since(t),
+		)
 	}()
 }
 
@@ -244,9 +250,12 @@ func (b *bot) hopsBetween(e *irc.Event, args []string) {
 			b.replyTof(e, "Server ID / name %q doesn't exist!", args[1])
 			return
 		}
-
+		t := time.Now()
 		dst := gr.distanceToPeer(one.ID, two.ID)
 
-		b.replyTof(e, "there are %d hops between %s and %s", dst, one.NameID(), two.NameID())
+		b.replyTof(
+			e, "there are %d hops between %s and %s (Search took %s)",
+			dst, one.NameID(), two.NameID(), time.Since(t),
+		)
 	}()
 }
