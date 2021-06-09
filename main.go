@@ -1,8 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	irc "github.com/thoj/go-ircevent"
@@ -14,6 +17,14 @@ const (
 	prefix = "~"
 )
 
+const (
+	RPL_LINKS      = "364"
+	RPL_ENDOFLINKS = "365"
+	RPL_MAP        = "006"
+	RPL_ENDOFMAP   = "007"
+	PRIVMSG        = "PRIVMSG"
+)
+
 func main() {
 	b := NewBot("graphbot", "pissing-on-graphs")
 	b.run(ircd)
@@ -23,13 +34,31 @@ type bot struct {
 	ircCon         *irc.Connection
 	commands       map[string]string
 	commandAliases map[string][]string
+
+	lastLINKS          [][]string
+	lastMAP            []string
+	mapLinksMutex      sync.Mutex
+	updatingLinkAndMap bool
 }
 
 func NewBot(nick, user string) *bot {
 	irccon := irc.IRC(nick, user)
 	irccon.Debug = true
 	irccon.UseTLS = true
-	b := &bot{irccon, make(map[string]string), make(map[string][]string)}
+	b := &bot{
+		ircCon:         irccon,
+		commands:       make(map[string]string),
+		commandAliases: make(map[string][]string),
+	}
+
+	b.ircCon.AddCallback("001", func(e *irc.Event) {
+		if res := os.Getenv("OPERIDENT"); res != "" {
+			b.ircCon.SendRaw("OPER " + res)
+		}
+
+		b.ircCon.Join("#opers")
+	})
+
 	defaultSources := []string{"A_Dragon", "#opers"}
 
 	b.addChatCommand("biggesthop", "Find largest number of hops between two servers, now fasterer", defaultSources, -1, b.maxHops, "bh", "howfucked")
@@ -40,11 +69,84 @@ func NewBot(nick, user string) *bot {
 	b.addChatCommand("help", "Take a guess.", nil, -1, b.doHelp)
 	b.addChatCommand("count", "Current server count", defaultSources, 0, func(e *irc.Event, _ []string) {
 		go func() {
-			g, err := getGraph(host)
+			b.updateLinksAndMap()
+			// g, err := getGraph(host)
+			g, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
 			if err != nil {
 				b.replyTof(e, "Error: %s", err)
 			}
 			b.replyTof(e, "Currently there are %d servers on the network", len(g))
+		}()
+	})
+
+	b.addChatCommand("test", "", defaultSources, 0, func(e *irc.Event, args []string) {
+		go func() {
+			b.updateLinksAndMap()
+			g, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			fmt.Println(g.mostPeers())
+		}()
+	})
+
+	b.addChatCommand("howfucked2", "", defaultSources, 0, b.maxHops2)
+	b.addChatCommand("graphsizes", "", defaultSources, 0, func(e *irc.Event, args []string) {
+		go func() {
+			g1, err := getGraph(host)
+			b.replyTof(e, "net: %d %s", len(g1), err)
+		}()
+
+		go func() {
+			err1 := b.updateLinksAndMap()
+			g2, err2 := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+			b.replyTof(e, "l+m: %d %s | %s", len(g2), err1, err2)
+		}()
+	})
+
+	b.addChatCommand("doboth", "", defaultSources, 0, func(e *irc.Event, args []string) {
+		b.maxHops(e, args)
+		b.maxHops2(e, args)
+	})
+
+	b.addChatCommand("compare", "", defaultSources, 0, func(e *irc.Event, args []string) {
+		go func() {
+			g1, err := getGraph(host)
+			if err != nil {
+				b.replyTof(e, "Error: %s", err)
+			}
+			b.updateLinksAndMap()
+			g2, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+			if err != nil {
+				b.replyTof(e, "Error: %s", err)
+			}
+
+			for _, server := range g1 {
+				otherServer := g2.getServer(server.Name)
+				if otherServer == nil {
+					fmt.Println("G2 is missing", server)
+					continue
+				}
+			outer:
+				for _, peer := range server.Peers {
+					for _, otherPeer := range otherServer.Peers {
+						if peer.Name == otherPeer.Name {
+							continue outer
+						}
+					}
+					fmt.Printf("Server ||%s|| on g1 has peer %s but g2 does not: ||%s||\n", server.NameID(), peer.NameID(), otherServer)
+				}
+			}
+		}()
+	})
+
+	b.addChatCommand("update", "updates cached links and maps", defaultSources, 0, func(e *irc.Event, args []string) {
+		go func() {
+			if err := b.updateLinksAndMap(); err != nil {
+				b.replyTof(e, "Error: %s", err)
+			}
+			b.replyTo(e, "Done")
 		}()
 	})
 
@@ -59,7 +161,7 @@ func (b *bot) run(server string) {
 func (b *bot) addChatCommand(command, desc string, allowedSources []string, numArgs int, callback func(e *irc.Event, args []string), aliases ...string) {
 	b.commands[command] = desc
 	b.commandAliases[command] = append(b.commandAliases[command], aliases...)
-	b.ircCon.AddCallback("PRIVMSG", b.commandWrapper(command, allowedSources, numArgs, callback))
+	b.ircCon.AddCallback(PRIVMSG, b.commandWrapper(command, allowedSources, numArgs, callback))
 }
 
 func (b *bot) matchesCommandOrAlias(s string) (string, bool) {
@@ -127,7 +229,9 @@ func (b *bot) replyTof(e *irc.Event, format string, args ...interface{}) {
 
 func (b *bot) maxHopsFrom(e *irc.Event, args []string) {
 	go func() {
-		gr, err := getGraph(host)
+		b.updateLinksAndMap()
+		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+		// gr, err := getGraph(host)
 		if err != nil {
 			b.replyTof(e, "Error: %s", err)
 			return
@@ -149,7 +253,9 @@ func (b *bot) maxHopsFrom(e *irc.Event, args []string) {
 
 func (b *bot) singlePointOfFailure(e *irc.Event, _ []string) {
 	go func() {
-		gr, err := getGraph(host)
+		b.updateLinksAndMap()
+		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+		// gr, err := getGraph(host)
 		if err != nil {
 			b.replyTof(e, "Error: %s", err)
 			return
@@ -166,7 +272,9 @@ func (b *bot) singlePointOfFailure(e *irc.Event, _ []string) {
 
 func (b *bot) peerCount(e *irc.Event, args []string) {
 	go func() {
-		gr, err := getGraph(host)
+		b.updateLinksAndMap()
+		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+		// gr, err := getGraph(host)
 		if err != nil {
 			b.replyTof(e, "Error: %s", err)
 			return
@@ -215,7 +323,9 @@ func (b *bot) doHelp(e *irc.Event, args []string) {
 
 func (b *bot) hopsBetween(e *irc.Event, args []string) {
 	go func() {
-		gr, err := getGraph(host)
+		b.updateLinksAndMap()
+		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+		// gr, err := getGraph(host)
 		if err != nil {
 			b.replyTof(e, "Error: %s", err)
 			return
@@ -270,4 +380,96 @@ func (b *bot) maxHops(e *irc.Event, _ []string) {
 			best, bestPair[0].NameID(), bestPair[1].NameID(), time.Since(t),
 		)
 	}()
+}
+
+func (b *bot) maxHops2(e *irc.Event, _ []string) {
+	go func() {
+		if err := b.updateLinksAndMap(); err != nil {
+			b.replyTof(e, "Error: %s", err)
+			return
+		}
+		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+		if err != nil {
+			b.replyTof(e, "Error: %s", err)
+			return
+		}
+
+		t := time.Now()
+		var bestPair [2]*Server
+		best := -1
+		for _, start := range gr {
+			distances := gr.allDistancesFrom(start)
+			for other, d := range distances {
+				if d > best {
+					best = d
+					bestPair = [2]*Server{start, other}
+				}
+			}
+		}
+
+		b.replyTof(
+			e,
+			"Largest hop size is %d! between %s and %s (search took %s)",
+			best, bestPair[0].NameID(), bestPair[1].NameID(), time.Since(t),
+		)
+	}()
+}
+
+// Parsing LINKS and MAP will work to get all the required data.
+
+func (b *bot) updateLinksAndMap() error {
+	if b.updatingLinkAndMap {
+		return errors.New("already updating")
+	}
+
+	b.mapLinksMutex.Lock()
+	defer b.mapLinksMutex.Unlock()
+
+	linksChan := make(chan []string)
+	mapChan := make(chan string)
+	currentLinks := [][]string{}
+	currentMap := []string{}
+
+	go func() {
+		for res := range linksChan {
+			currentLinks = append(currentLinks, res)
+		}
+	}()
+
+	go func() {
+		for res := range mapChan {
+			currentMap = append(currentMap, res)
+		}
+	}()
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
+	defer func() { b.updatingLinkAndMap = false }()
+	linksCB := b.ircCon.AddCallback(RPL_LINKS, func(e *irc.Event) { linksChan <- e.Arguments[1:] })
+	linksEndCB := b.ircCon.AddCallback(RPL_ENDOFLINKS, func(_ *irc.Event) {
+		defer wg.Done()
+		b.ircCon.RemoveCallback(RPL_LINKS, linksCB)
+		close(linksChan)
+	})
+
+	mapCB := b.ircCon.AddCallback(RPL_MAP, func(e *irc.Event) { mapChan <- e.MessageWithoutFormat() })
+	mapEndCB := b.ircCon.AddCallback(RPL_ENDOFMAP, func(_ *irc.Event) {
+		defer wg.Done()
+		b.ircCon.RemoveCallback(RPL_MAP, mapCB)
+		close(mapChan)
+	})
+
+	b.ircCon.SendRaw("MAP")
+	b.ircCon.SendRaw("LINKS")
+
+	wg.Wait()
+
+	b.ircCon.RemoveCallback(RPL_ENDOFMAP, mapEndCB)
+	b.ircCon.RemoveCallback(RPL_ENDOFLINKS, linksEndCB)
+
+	b.lastLINKS = currentLinks
+	b.lastMAP = currentMap
+
+	return nil
 }

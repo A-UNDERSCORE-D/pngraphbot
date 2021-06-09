@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -32,6 +33,16 @@ func (s *Server) String() string {
 	return fmt.Sprintf("%s connected to %s", s.NameID(), strings.Join(peers, ", "))
 }
 
+func (s *Server) HasPeer(other *Server) bool {
+	for _, p := range s.Peers {
+		if p.Name == other.Name {
+			return true
+		}
+	}
+
+	return false
+}
+
 func getJSON(target string) ([]byte, error) {
 	r, err := http.Get(target)
 	if err != nil {
@@ -46,7 +57,14 @@ func getJSON(target string) ([]byte, error) {
 	return data, nil
 }
 
-func getGraph(target string) (graph, error) {
+func getGraph(target string) (out graph, err error) {
+	defer func() {
+		res := recover()
+		if res != nil {
+			err = res.(error)
+		}
+	}()
+
 	type jsonStruct struct {
 		Servers map[string]*Server `json:"nodes"`
 		Links   [][2]string        `json:"links"`
@@ -76,6 +94,67 @@ func getGraph(target string) (graph, error) {
 	}
 
 	return parsedJSON.Servers, nil
+}
+
+var mapRe = regexp.MustCompile(`^(?P<name>\S+)\s*\(\d+\)\s(?P<id>\S+)$`)
+
+func graphFromLinksAndMap(links [][]string, sMap []string) (graph, error) {
+	servers := graph(make(map[string]*Server, len(links)))
+
+	for _, line := range sMap {
+		line = strings.TrimLeft(line, "`|- ")
+		match := mapRe.FindStringSubmatch(line)
+		if match == nil {
+			return nil, fmt.Errorf("%s does not match regexp", line)
+		}
+
+		name := match[mapRe.SubexpIndex("name")]
+		id := match[mapRe.SubexpIndex("id")]
+		fmt.Println(name, id)
+		servers[id] = &Server{Name: name, ID: id, Version: "Unknown"}
+	}
+
+	/*
+		>> @time=2021-06-09T12:08:37.995Z :irc.awesome-dragon.science 364 A_Dragon urine.trouble.pissnet.xyz irc.awesome-dragon.science :1 Urine Trouble
+		>> @time=2021-06-09T12:08:37.996Z :irc.awesome-dragon.science 364 A_Dragon irc.awesome-dragon.science irc.awesome-dragon.science :0 Draconic Pissnet.
+		>> @time=2021-06-09T12:08:37.996Z :irc.awesome-dragon.science 365 A_Dragon * :End of /LINKS list.
+	*/
+
+	fmt.Println("And now, onto the LINKS")
+	for _, line := range links {
+		serv1Name := line[0]
+		serv2Name := line[1]
+		serv1Desc := line[2]
+
+		serv1 := servers.getServer(serv1Name)
+		serv2 := servers.getServer(serv2Name)
+		if serv1 == nil {
+			// MAP didnt contain this server. Do our best to add data for it
+			fmt.Printf("UNKNOWN SERVER %s! Creating fake ID\n", serv1Name)
+			serv1 = &Server{Name: serv1Name, Description: serv1Desc}
+			servers["UNKNOWN"+serv1Name] = serv1
+		}
+
+		if serv2 == nil {
+			fmt.Printf("UNKNOWN SERVER %s! Creating fake ID\n", serv2Name)
+			serv2 = &Server{Name: serv2Name}
+			servers["UNKNOWN"+serv2Name] = serv2
+		}
+
+		if serv1.Description == "" {
+			serv1.Description = serv1Desc
+		}
+
+		if !serv1.HasPeer(serv2) {
+			serv1.Peers = append(serv1.Peers, serv2)
+		}
+
+		if !serv2.HasPeer(serv1) {
+			serv2.Peers = append(serv2.Peers, serv1)
+		}
+	}
+
+	return servers, nil
 }
 
 // func graphFromList(list []string) graph {
@@ -197,5 +276,3 @@ func (g graph) mostPeers() *Server {
 
 	return bestServer
 }
-
-// Parsing LINKS and MAP will work to get all the required data.
