@@ -50,7 +50,7 @@ func NewBot(nick, user string) *bot {
 		commandAliases: make(map[string][]string),
 	}
 
-	b.ircCon.AddCallback("001", func(e *irc.Event) {
+	b.ircCon.AddCallback("001", func(_ *irc.Event) {
 		if res := os.Getenv("OPERIDENT"); res != "" {
 			b.ircCon.SendRaw("OPER " + res)
 		}
@@ -90,7 +90,6 @@ func NewBot(nick, user string) *bot {
 		}()
 	})
 
-	b.addChatCommand("howfucked2", "", defaultSources, 0, b.maxHops2)
 	b.addChatCommand("graphsizes", "", defaultSources, 0, func(e *irc.Event, args []string) {
 		go func() {
 			g1, err := getGraph(host)
@@ -104,42 +103,6 @@ func NewBot(nick, user string) *bot {
 		}()
 	})
 
-	b.addChatCommand("doboth", "", defaultSources, 0, func(e *irc.Event, args []string) {
-		b.maxHops(e, args)
-		b.maxHops2(e, args)
-	})
-
-	b.addChatCommand("compare", "", defaultSources, 0, func(e *irc.Event, args []string) {
-		go func() {
-			g1, err := getGraph(host)
-			if err != nil {
-				b.replyTof(e, "Error: %s", err)
-			}
-			b.updateLinksAndMap()
-			g2, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
-			if err != nil {
-				b.replyTof(e, "Error: %s", err)
-			}
-
-			for _, server := range g1 {
-				otherServer := g2.getServer(server.Name)
-				if otherServer == nil {
-					fmt.Println("G2 is missing", server)
-					continue
-				}
-			outer:
-				for _, peer := range server.Peers {
-					for _, otherPeer := range otherServer.Peers {
-						if peer.Name == otherPeer.Name {
-							continue outer
-						}
-					}
-					fmt.Printf("Server ||%s|| on g1 has peer %s but g2 does not: ||%s||\n", server.NameID(), peer.NameID(), otherServer)
-				}
-			}
-		}()
-	})
-
 	b.addChatCommand("update", "updates cached links and maps", defaultSources, 0, func(e *irc.Event, args []string) {
 		go func() {
 			if err := b.updateLinksAndMap(); err != nil {
@@ -148,6 +111,63 @@ func NewBot(nick, user string) *bot {
 			b.replyTo(e, "Done")
 		}()
 	})
+
+	b.addChatCommand("showhopsbetween", "Lists the hops between servers", defaultSources, 2, func(e *irc.Event, args []string) {
+		go func() {
+			defer func() {
+				res := recover()
+				if res != nil {
+					b.replyTo(e, "PANIC! Caught and logged. (quit breaking my shit!)")
+					fmt.Println("PANIC!", res)
+				}
+			}()
+			sourceName, destName := args[0], args[1]
+			b.updateLinksAndMap()
+			g, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+			if err != nil {
+				b.replyTof(e, "Error: %s", err)
+				return
+			}
+
+			source, dst := g.getServer(sourceName), g.getServer(destName)
+			if source == nil {
+				b.replyTof(e, "Unknown server %s", sourceName)
+				return
+			}
+
+			if dst == nil {
+				b.replyTof(e, "Unknown server %s", destName)
+				return
+			}
+
+			res := g.recursiveBFS(g.getServer(sourceName), g.getServer(destName), nil)
+			nameIDs := []string{}
+			names := []string{}
+			IDs := []string{}
+
+			for _, v := range res {
+				nameIDs = append(nameIDs, v.NameID())
+				names = append(names, v.Name)
+				IDs = append(IDs, v.ID)
+			}
+
+			joinedNameIDs := strings.Join(nameIDs, " -> ")
+			joinedNames := strings.Join(names, " -> ")
+			joinedIDs := strings.Join(IDs, " -> ")
+			const maxLen = 450
+
+			if len(joinedNameIDs) <= maxLen {
+				b.replyTo(e, joinedNameIDs)
+				return
+			} else if len(joinedNames) <= maxLen {
+				b.replyTo(e, "IDs not included! would be too long!")
+				b.replyTo(e, joinedNames)
+			} else {
+				b.replyTo(e, "IDs only! too long otherwise (and may still be too long!)")
+				b.replyTo(e, joinedIDs)
+			}
+		}()
+	}, "shb", "streambetween")
 
 	return b
 }
@@ -357,39 +377,6 @@ func (b *bot) maxHops(e *irc.Event, _ []string) {
 		b.updateLinksAndMap()
 		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
 		// gr, err := getGraph(host)
-		if err != nil {
-			b.replyTof(e, "Error: %s", err)
-			return
-		}
-
-		t := time.Now()
-		var bestPair [2]*Server
-		best := -1
-		for _, start := range gr {
-			distances := gr.allDistancesFrom(start)
-			for other, d := range distances {
-				if d > best {
-					best = d
-					bestPair = [2]*Server{start, other}
-				}
-			}
-		}
-
-		b.replyTof(
-			e,
-			"Largest hop size is %d! between %s and %s (search took %s)",
-			best, bestPair[0].NameID(), bestPair[1].NameID(), time.Since(t),
-		)
-	}()
-}
-
-func (b *bot) maxHops2(e *irc.Event, _ []string) {
-	go func() {
-		if err := b.updateLinksAndMap(); err != nil {
-			b.replyTof(e, "Error: %s", err)
-			return
-		}
-		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
 		if err != nil {
 			b.replyTof(e, "Error: %s", err)
 			return

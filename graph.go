@@ -230,6 +230,23 @@ func (g graph) allDistancesFrom(source *Server) map[*Server]int {
 	return out
 }
 
+func (g graph) recursiveBFS(source, target, prev *Server) []*Server {
+	out := []*Server{source}
+	if source == target {
+		return out
+	}
+	for _, s := range source.Peers {
+		if s == prev {
+			continue
+		}
+
+		if res := g.recursiveBFS(s, target, source); res != nil {
+			return append(out, res...)
+		}
+	}
+	return nil
+}
+
 // func (g graph) largestDistance2(source *Server) (int, *Server) {
 // }
 
