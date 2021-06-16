@@ -405,9 +405,14 @@ func (b *bot) maxHops(e *irc.Event, _ []string) {
 
 // Parsing LINKS and MAP will work to get all the required data.
 
-func (b *bot) updateLinksAndMap() error {
+func (b *bot) updateLinksAndMap() (out error) {
 	// b.mapLinksMutex.Lock()
 	// defer b.mapLinksMutex.Unlock()
+	defer func() {
+		if err := recover(); err != nil {
+			out = fmt.Errorf("caught panic: %s", err)
+		}
+	}()
 
 	linksChan := make(chan []string)
 	mapChan := make(chan string)
