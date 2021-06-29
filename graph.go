@@ -10,15 +10,17 @@ import (
 	"strings"
 )
 
-type graph map[string]*Server
-
-type Server struct {
-	Name        string    `json:"name"`
-	ID          string    `json:"id"`
-	Description string    `json:"description"`
-	Version     string    `json:"version"`
-	Peers       []*Server `json:"-"`
-}
+type (
+	graph      map[string]*Server
+	filterFunc func(*Server) bool
+	Server     struct {
+		Name        string    `json:"name"`
+		ID          string    `json:"id"`
+		Description string    `json:"description"`
+		Version     string    `json:"version"`
+		Peers       []*Server `json:"-"`
+	}
+)
 
 func (s Server) NameID() string {
 	return fmt.Sprintf("%s (%s)", s.Name, s.ID)
@@ -250,13 +252,16 @@ func (g graph) recursiveBFS(source, target, prev *Server) []*Server {
 // func (g graph) largestDistance2(source *Server) (int, *Server) {
 // }
 
-func (g graph) largestDistanceFrom(source *Server) (int, *Server) {
+func (g graph) largestDistanceFrom(source *Server, filter func(*Server) bool) (int, *Server) {
 	bestHopCount := -1
 	var bestServer *Server
 	servers := g.values()
 	distances := g.allDistancesFrom(source)
 
 	for _, other := range servers {
+		if filter != nil && !filter(other) {
+			continue
+		}
 		if hc := distances[other]; hc > bestHopCount {
 			bestHopCount = hc
 			bestServer = other

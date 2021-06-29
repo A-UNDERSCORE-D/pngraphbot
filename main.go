@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -262,7 +263,7 @@ func (b *bot) maxHopsFrom(e *irc.Event, args []string) {
 			return
 		}
 		t := time.Now()
-		biggestHop, srv := gr.largestDistanceFrom(from)
+		biggestHop, srv := gr.largestDistanceFrom(from, nil)
 		b.replyTof(
 			e, "Largest hop size from %s is %d! other side is %s (search took %s)",
 			from.NameID(), biggestHop, srv.NameID(), time.Since(t),
@@ -372,7 +373,7 @@ func (b *bot) hopsBetween(e *irc.Event, args []string) {
 	}()
 }
 
-func (b *bot) maxHops(e *irc.Event, _ []string) {
+func (b *bot) maxHops(e *irc.Event, args []string) {
 	go func() {
 		b.updateLinksAndMap()
 		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
@@ -382,17 +383,31 @@ func (b *bot) maxHops(e *irc.Event, _ []string) {
 			return
 		}
 
+		skipTilde := true
+
+		if len(args) > 0 && stringSliceContains("-noskip", args) {
+			skipTilde = false
+		}
+
 		t := time.Now()
 		var bestPair [2]*Server
 		best := -1
 		for _, start := range gr {
 			distances := gr.allDistancesFrom(start)
 			for other, d := range distances {
+				if skipTilde && strings.HasPrefix(other.Description, "~") {
+					continue
+				}
 				if d > best {
 					best = d
 					bestPair = [2]*Server{start, other}
 				}
 			}
+		}
+
+		if bestPair[0] == nil || bestPair[1] == nil {
+			b.replyTo(e, "Error occurred (try with -noskip)")
+			return
 		}
 
 		b.replyTof(
@@ -413,6 +428,11 @@ func (b *bot) updateLinksAndMap() (out error) {
 			out = fmt.Errorf("caught panic: %s", err)
 		}
 	}()
+
+	if b.updatingLinkAndMap {
+		return errors.New("already updating")
+	}
+	b.updatingLinkAndMap = true
 
 	linksChan := make(chan []string)
 	mapChan := make(chan string)
