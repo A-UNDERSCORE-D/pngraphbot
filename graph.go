@@ -113,7 +113,7 @@ func graphFromLinksAndMap(links [][]string, sMap []string) (graph, error) {
 
 		name := match[mapRe.SubexpIndex("name")]
 		id := match[mapRe.SubexpIndex("id")]
-		fmt.Printf("name: %q; ID: %q  source: %q  %#v\n", name, id, line, match, re.SubexpNames())
+		fmt.Printf("name: %q; ID: %q\n", name, id)
 		servers[id] = &Server{Name: name, ID: id, Version: "Unknown"}
 	}
 
