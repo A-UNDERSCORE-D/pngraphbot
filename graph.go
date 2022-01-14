@@ -98,7 +98,8 @@ func getGraph(target string) (out graph, err error) {
 	return parsedJSON.Servers, nil
 }
 
-var mapRe = regexp.MustCompile(`^(?P<name>\S+)\s*\(\d+\)\s(?P<id>\S+)$`)
+var mapRe = regexp.MustCompile(`^(?P<name>\S+) \-+ \| |\S+ +\d+ \(.+\) \[(?P<id>\S+)\]`)
+var oldMapRe = regexp.MustCompile(`^(?P<name>\S+)\s*\(\d+\)\s(?P<id>\S+)$`)
 
 func graphFromLinksAndMap(links [][]string, sMap []string) (graph, error) {
 	servers := graph(make(map[string]*Server, len(links)))
