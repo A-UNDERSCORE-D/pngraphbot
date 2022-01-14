@@ -98,7 +98,7 @@ func getGraph(target string) (out graph, err error) {
 	return parsedJSON.Servers, nil
 }
 
-var mapRe = regexp.MustCompile(`^(?P<name>\S+) \-+ \| |\S+ +\d+ \(.+\) \[(?P<id>\S+)\]$`)
+var mapRe = regexp.MustCompile(`^(?P<name>\S+)\s\-*\s\|\sUsers:\s+\d+\s+\(.+%\)\s\[(?P<id>\S+)\]$`)
 var oldMapRe = regexp.MustCompile(`^(?P<name>\S+)\s*\(\d+\)\s(?P<id>\S+)$`)
 
 func graphFromLinksAndMap(links [][]string, sMap []string) (graph, error) {
@@ -113,7 +113,7 @@ func graphFromLinksAndMap(links [][]string, sMap []string) (graph, error) {
 
 		name := match[mapRe.SubexpIndex("name")]
 		id := match[mapRe.SubexpIndex("id")]
-		fmt.Printf("name: %q; ID: %q  source: %q\n", name, id, line)
+		fmt.Printf("name: %q; ID: %q  source: %q  %#v\n", name, id, line, match, re.SubexpNames())
 		servers[id] = &Server{Name: name, ID: id, Version: "Unknown"}
 	}
 
