@@ -36,11 +36,6 @@ func (s *Server) String() string {
 }
 
 func (s *Server) HasPeer(other *Server) bool {
-	fmt.Println(s)
-	fmt.Println(s.Peers)
-	fmt.Println(other)
-	fmt.Println(other.Peers)
-
 	for _, p := range s.Peers {
 		if p.Name == other.Name {
 			return true
