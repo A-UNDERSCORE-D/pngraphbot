@@ -155,7 +155,7 @@ func graphFromLinksAndMap(links [][]string, sMap []string, getID func(string) (s
 				id = "FAKEID_" + serv2Name
 			}
 
-			serv1 = &Server{Name: serv2Name, Description: serv2Desc, ID: id}
+			serv1 = &Server{Name: serv2Name, ID: id}
 			servers[id] = serv2
 		}
 
