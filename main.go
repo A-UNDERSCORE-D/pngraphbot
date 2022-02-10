@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -22,7 +23,9 @@ const (
 	RPL_ENDOFLINKS = "365"
 	RPL_MAP        = "006"
 	RPL_ENDOFMAP   = "007"
+	RPL_NOSUCHNICK = "401"
 	PRIVMSG        = "PRIVMSG"
+	NOTICE         = "NOTICE"
 )
 
 func main() {
@@ -71,7 +74,7 @@ func NewBot(nick, user string) *bot {
 		go func() {
 			b.updateLinksAndMap()
 			// g, err := getGraph(host)
-			g, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+			g, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP, b.getID)
 			if err != nil {
 				b.replyTof(e, "Error: %s", err)
 			}
@@ -82,7 +85,7 @@ func NewBot(nick, user string) *bot {
 	b.addChatCommand("test", "", defaultSources, 0, func(e *irc.Event, args []string) {
 		go func() {
 			b.updateLinksAndMap()
-			g, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+			g, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP, b.getID)
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -99,7 +102,7 @@ func NewBot(nick, user string) *bot {
 
 		go func() {
 			err1 := b.updateLinksAndMap()
-			g2, err2 := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+			g2, err2 := graphFromLinksAndMap(b.lastLINKS, b.lastMAP, b.getID)
 			b.replyTof(e, "l+m: %d %s | %s", len(g2), err1, err2)
 		}()
 	})
@@ -124,7 +127,7 @@ func NewBot(nick, user string) *bot {
 			}()
 			sourceName, destName := args[0], args[1]
 			b.updateLinksAndMap()
-			g, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+			g, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP, b.getID)
 			if err != nil {
 				b.replyTof(e, "Error: %s", err)
 				return
@@ -250,7 +253,7 @@ func (b *bot) replyTof(e *irc.Event, format string, args ...interface{}) {
 func (b *bot) maxHopsFrom(e *irc.Event, args []string) {
 	go func() {
 		b.updateLinksAndMap()
-		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP, b.getID)
 		// gr, err := getGraph(host)
 		if err != nil {
 			b.replyTof(e, "Error: %s", err)
@@ -274,7 +277,7 @@ func (b *bot) maxHopsFrom(e *irc.Event, args []string) {
 func (b *bot) singlePointOfFailure(e *irc.Event, _ []string) {
 	go func() {
 		b.updateLinksAndMap()
-		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP, b.getID)
 		// gr, err := getGraph(host)
 		if err != nil {
 			b.replyTof(e, "Error: %s", err)
@@ -293,7 +296,7 @@ func (b *bot) singlePointOfFailure(e *irc.Event, _ []string) {
 func (b *bot) peerCount(e *irc.Event, args []string) {
 	go func() {
 		b.updateLinksAndMap()
-		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP, b.getID)
 		// gr, err := getGraph(host)
 		if err != nil {
 			b.replyTof(e, "Error: %s", err)
@@ -344,7 +347,7 @@ func (b *bot) doHelp(e *irc.Event, args []string) {
 func (b *bot) hopsBetween(e *irc.Event, args []string) {
 	go func() {
 		b.updateLinksAndMap()
-		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP, b.getID)
 		// gr, err := getGraph(host)
 		if err != nil {
 			b.replyTof(e, "Error: %s", err)
@@ -376,7 +379,7 @@ func (b *bot) hopsBetween(e *irc.Event, args []string) {
 func (b *bot) maxHops(e *irc.Event, args []string) {
 	go func() {
 		b.updateLinksAndMap()
-		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP)
+		gr, err := graphFromLinksAndMap(b.lastLINKS, b.lastMAP, b.getID)
 		// gr, err := getGraph(host)
 		if err != nil {
 			b.replyTof(e, "Error: %s", err)
@@ -481,4 +484,54 @@ func (b *bot) updateLinksAndMap() (out error) {
 	b.lastMAP = currentMap
 
 	return nil
+}
+
+var getIDRe = regexp.MustCompile(`^GETID: (\S+) is (\S+)$`)
+
+func (b *bot) getID(name string) (id string, err error) {
+	donechan := make(chan string, 1)
+	var noticeID, noSuchNickID int
+
+	noticeID = b.ircCon.AddCallback(NOTICE, func(e *irc.Event) {
+		msg := e.Message()
+		pair := getIDRe.FindStringSubmatch(msg)
+		if pair == nil || len(pair) == 0 {
+			return
+		}
+
+		// we matched, extract the data we want, verify that its ours
+		retName, id := pair[1], pair[2]
+
+		if strings.ToLower(name) != strings.ToLower(retName) {
+			return // wasnt us
+		}
+
+		// it was us. drop the hook
+		b.ircCon.RemoveCallback(NOTICE, noticeID)
+		b.ircCon.RemoveCallback(RPL_NOSUCHNICK, noSuchNickID)
+		donechan <- id
+	})
+
+	noSuchNickID = b.ircCon.AddCallback("401", func(e *irc.Event) {
+		resName := e.Arguments[1]
+		if strings.ToLower(resName) != strings.ToLower(name) {
+			return // Not us
+		}
+
+		b.ircCon.RemoveCallback(NOTICE, noticeID)
+		b.ircCon.RemoveCallback(RPL_NOSUCHNICK, noSuchNickID)
+		donechan <- ""
+	})
+
+	b.ircCon.SendRawf("GETID %s", name)
+
+	timer := time.NewTicker(time.Second)
+	defer timer.Stop()
+
+	select {
+	case <-time.After(time.Second):
+		return "", errors.New("timed out")
+	case id := <-donechan:
+		return id, nil
+	}
 }

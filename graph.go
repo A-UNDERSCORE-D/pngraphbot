@@ -98,10 +98,12 @@ func getGraph(target string) (out graph, err error) {
 	return parsedJSON.Servers, nil
 }
 
-var mapRe = regexp.MustCompile(`^(?P<name>\S+)\s\-*\s\|\sUsers:\s+\d+\s+\(.+%\)\s\[(?P<id>\S+)\]$`)
-var oldMapRe = regexp.MustCompile(`^(?P<name>\S+)\s*\(\d+\)\s(?P<id>\S+)$`)
+var (
+	mapRe    = regexp.MustCompile(`^(?P<name>\S+)\s\-*\s\|\sUsers:\s+\d+\s+\(.+%\)\s\[(?P<id>\S+)\]$`)
+	oldMapRe = regexp.MustCompile(`^(?P<name>\S+)\s*\(\d+\)\s(?P<id>\S+)$`)
+)
 
-func graphFromLinksAndMap(links [][]string, sMap []string) (graph, error) {
+func graphFromLinksAndMap(links [][]string, sMap []string, getID func(string) (string, error)) (graph, error) {
 	servers := graph(make(map[string]*Server, len(links)))
 
 	for _, line := range sMap {
@@ -133,15 +135,28 @@ func graphFromLinksAndMap(links [][]string, sMap []string) (graph, error) {
 		serv2 := servers.getServer(serv2Name)
 		if serv1 == nil {
 			// MAP didnt contain this server. Do our best to add data for it
-			fmt.Printf("UNKNOWN SERVER %s! Creating fake ID\n", serv1Name)
-			serv1 = &Server{Name: serv1Name, Description: serv1Desc}
-			servers["UNKNOWN"+serv1Name] = serv1
+			id, err := getID(serv1Name)
+			if err != nil {
+				// we didnt get a decent response. Create a fake ID
+				fmt.Printf("UNKNOWN SERVER %s! Creating fake ID\n", serv1Name)
+				id = "FAKEID_" + serv1Name
+			}
+
+			serv1 = &Server{Name: serv1Name, Description: serv1Desc, ID: id}
+			servers[id] = serv1
 		}
 
 		if serv2 == nil {
-			fmt.Printf("UNKNOWN SERVER %s! Creating fake ID\n", serv2Name)
-			serv2 = &Server{Name: serv2Name}
-			servers["UNKNOWN"+serv2Name] = serv2
+			// MAP didnt contain this server. Do our best to add data for it
+			id, err := getID(serv2Name)
+			if err != nil {
+				// we didnt get a decent response. Create a fake ID
+				fmt.Printf("UNKNOWN SERVER %s! Creating fake ID\n", serv1Name)
+				id = "FAKEID_" + serv2Name
+			}
+
+			serv1 = &Server{Name: serv2Name, Description: serv2Desc, ID: id}
+			servers[id] = serv2
 		}
 
 		if serv1.Description == "" {
