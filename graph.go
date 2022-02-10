@@ -36,6 +36,11 @@ func (s *Server) String() string {
 }
 
 func (s *Server) HasPeer(other *Server) bool {
+	fmt.Println(s)
+	fmt.Println(s.Peers)
+	fmt.Println(other)
+	fmt.Println(other.Peers)
+
 	for _, p := range s.Peers {
 		if p.Name == other.Name {
 			return true
@@ -133,13 +138,16 @@ func graphFromLinksAndMap(links [][]string, sMap []string, getID func(string) (s
 
 		serv1 := servers.getServer(serv1Name)
 		serv2 := servers.getServer(serv2Name)
+
+		fmt.Printf("Server Pair: %q and %q\n", serv1Name, serv2Name)
 		if serv1 == nil {
 			// MAP didnt contain this server. Do our best to add data for it
+			fmt.Printf("Unknown server %q! requesting...\n", serv1Name)
 			id, err := getID(serv1Name)
 			if err != nil {
 				// we didnt get a decent response. Create a fake ID
-				fmt.Printf("UNKNOWN SERVER %s! Creating fake ID\n", serv1Name)
 				id = "FAKEID_" + serv1Name
+				fmt.Printf("UNKNOWN SERVER %s! Creating fake ID %q\n", serv1Name, id)
 			}
 
 			serv1 = &Server{Name: serv1Name, Description: serv1Desc, ID: id}
@@ -148,14 +156,17 @@ func graphFromLinksAndMap(links [][]string, sMap []string, getID func(string) (s
 
 		if serv2 == nil {
 			// MAP didnt contain this server. Do our best to add data for it
+			fmt.Printf("Unknown server %q! requesting...\n", serv1Name)
 			id, err := getID(serv2Name)
 			if err != nil {
 				// we didnt get a decent response. Create a fake ID
-				fmt.Printf("UNKNOWN SERVER %s! Creating fake ID\n", serv1Name)
 				id = "FAKEID_" + serv2Name
+				fmt.Printf("UNKNOWN SERVER %s! Creating fake ID %q\n", serv1Name, id)
 			}
 
-			serv1 = &Server{Name: serv2Name, ID: id}
+			fmt.Printf("Got a good response: %s\n", id)
+
+			serv2 = &Server{Name: serv2Name, ID: id}
 			servers[id] = serv2
 		}
 
